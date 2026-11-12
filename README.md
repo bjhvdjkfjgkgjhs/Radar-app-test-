@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Echo Desk</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
 <style>
@@ -1033,8 +1032,29 @@ if(typeof importScripts==='function'){
 }
 if(typeof module!=='undefined') module.exports={decodeIRIS,laeaFromProj,decodeL2,decodeL3Radar,decodeL3Cells,legacyTable,f16,decodeSTI,tabularPages};
 </script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div id="bootErr" class="panel" hidden style="left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(440px,calc(100vw - 32px));padding:16px 18px;font:500 13px/1.45 var(--ui);z-index:3000"></div>
 <script>
+(function(){
+  var V='1.9.4', JS=['https://unpkg.com/leaflet@'+V+'/dist/leaflet.js','https://cdn.jsdelivr.net/npm/leaflet@'+V+'/dist/leaflet.js','https://cdnjs.cloudflare.com/ajax/libs/leaflet/'+V+'/leaflet.js'],
+      CSS=['https://unpkg.com/leaflet@'+V+'/dist/leaflet.css','https://cdn.jsdelivr.net/npm/leaflet@'+V+'/dist/leaflet.css','https://cdnjs.cloudflare.com/ajax/libs/leaflet/'+V+'/leaflet.css'],
+      started=false, tried=[];
+  function css(i){ if(i>=CSS.length) return; var l=document.createElement('link'); l.rel='stylesheet'; l.href=CSS[i]; l.onerror=function(){ l.remove(); css(i+1); }; document.head.appendChild(l); }
+  function start(){ if(started) return; started=true; var a=document.createElement('script'); a.textContent=document.getElementById('app-src').textContent; document.body.appendChild(a); }
+  function fail(){ var e=document.getElementById('bootErr'); e.hidden=false;
+    e.innerHTML='<b style="color:#ffb347">The map library (Leaflet) could not load.</b><br>Tried unpkg, jsDelivr and cdnjs. Check the internet connection, turn off content blockers for this page, or open the file in Safari or Chrome rather than an in-app file viewer (many viewers block outside scripts).<br><span style="color:#8d9099;font:500 11px monospace">'+tried.join(' · ')+'</span>'; }
+  function js(i){
+    if(window.L&&window.L.map) return start(); if(i>=JS.length) return fail();
+    var s=document.createElement('script'), done=false; s.src=JS[i];
+    var next=function(why){ if(done) return; done=true; tried.push(JS[i].split('/')[2]+': '+why); s.remove(); js(i+1); };
+    var t=setTimeout(function(){ next('timed out'); },9000);
+    s.onload=function(){ clearTimeout(t); if(window.L&&window.L.map){ done=true; start(); } else next('loaded but empty'); };
+    s.onerror=function(){ clearTimeout(t); next('failed'); };
+    document.head.appendChild(s);
+  }
+  css(0); js(0);
+})();
+</script>
+<script type="text/plain" id="app-src">
 "use strict";
 /* ================= constants ================= */
 const S3={ l2:'https://unidata-nexrad-level2.s3.amazonaws.com', l2rt:'https://unidata-nexrad-level2-chunks.s3.amazonaws.com', l3:'https://unidata-nexrad-level3.s3.amazonaws.com', g19:'https://noaa-goes19.s3.amazonaws.com', g18:'https://noaa-goes18.s3.amazonaws.com' };
@@ -1085,7 +1105,7 @@ function mrrlSites(){
 }
 const IDEAM_SITES=[['Barrancabermeja',7.063,-73.851],['Carimagua',4.568,-71.333],['Guaviare',2.565,-72.640],['Munchique',2.527,-76.961],['San_Andres',12.582,-81.703],['Corozal',9.317,-75.286],['Tablazo',4.918,-74.290],['Santa_Elena',6.209,-75.496]];
 function ideamSites(){ const fix=store.get('ideamFix',{});
-  return IDEAM_SITES.map(([folder,lat,lon])=>{ const f=fix[folder]; return {id:'CO'+folder.slice(0,3).toUpperCase(),folder,lat:f?f[0]:lat,lon:f?f[1]:lon,approx:!f,cc:'CO',region:'CO',name:`${folder.replace(/_/g,' ')} (IDEAM)`,type:'MRRL',src:'ideam',rangeKm:240}; }); }
+  return IDEAM_SITES.map(([folder,lat,lon])=>{ const f=fix[folder]; const ids={San_Andres:'COSAN',Santa_Elena:'COSEL'}; return {id:ids[folder]||('CO'+folder.slice(0,3).toUpperCase()),folder,lat:f?f[0]:lat,lon:f?f[1]:lon,approx:!f,cc:'CO',region:'CO',name:`${folder.replace(/_/g,' ')} (IDEAM)`,type:'MRRL',src:'ideam',rangeKm:240}; }); }
 const isMrrl=s=>s&&s.type==='MRRL';
 const mrrlRaw=s=>isMrrl(s)&&RAW_SRC.has(s.src)&&!s.rawBlocked;
 
@@ -1244,8 +1264,8 @@ let baseLayer=null, refLayer=null;
 function setBasemap(k){
   const b=BASEMAPS[k]; if(!b) return;
   if(baseLayer) map.removeLayer(baseLayer); if(refLayer) map.removeLayer(refLayer);
-  baseLayer=L.tileLayer(b.base,{maxNativeZoom:b.max,maxZoom:19,attribution:b.attr+' · Data: NOAA/NWS via AWS Open Data',keepBuffer:4,updateWhenZooming:false,crossOrigin:'anonymous'}).addTo(map);
-  refLayer=b.ref?L.tileLayer(b.ref,{pane:'labels',maxNativeZoom:b.max,maxZoom:19,keepBuffer:4,updateWhenZooming:false,crossOrigin:'anonymous'}):null;
+  baseLayer=L.tileLayer(b.base,{maxNativeZoom:b.max,maxZoom:19,attribution:b.attr+' · Data: NOAA/NWS via AWS Open Data',keepBuffer:4,updateWhenZooming:false}).addTo(map);
+  refLayer=b.ref?L.tileLayer(b.ref,{pane:'labels',maxNativeZoom:b.max,maxZoom:19,keepBuffer:4,updateWhenZooming:false}):null;
   if(refLayer && $('#lyLabels').checked) refLayer.addTo(map);
   if(typeof split!=='undefined') split.setBasemap(k);
   $$('.basemaps button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.bm===k));
@@ -1762,7 +1782,7 @@ const imagery={
   layers:new Map(), cur:null,
   ensure(f,onload){
     let lyr=this.layers.get(f.url); if(lyr) return lyr;
-    const common={pane:'imagery',opacity:0,keepBuffer:2,updateWhenZooming:false,updateWhenIdle:true,crossOrigin:'anonymous'};
+    const common={pane:'imagery',opacity:0,keepBuffer:2,updateWhenZooming:false,updateWhenIdle:true};
     lyr=f.kind==='wms'
       ? L.tileLayer.wms('https://geo.weather.gc.ca/geomet',Object.assign({layers:'RADAR_1KM_RRAI',format:'image/png',transparent:true,version:'1.3.0',time:f.time,tileSize:512,attribution:'Radar &copy; ECCC'},common))
       : L.tileLayer(f.url,Object.assign({maxNativeZoom:7,maxZoom:19,attribution:'Radar &copy; RainViewer'},common));
@@ -2960,8 +2980,8 @@ const split={on:false,map:null,radar:null,ctx:{prod:'VEL',tilt:0,src:'L3',l3code
     $('#pbTilt').onchange=e=>{ this.ctx.tilt=+e.target.value; this.reload(true); };
   },
   setBasemap(k){ if(!this.map) return; const b=BASEMAPS[k]; if(this.base) this.map.removeLayer(this.base); if(this.ref) this.map.removeLayer(this.ref);
-    this.base=L.tileLayer(b.base,{maxNativeZoom:b.max,maxZoom:19,keepBuffer:3,updateWhenZooming:false,crossOrigin:'anonymous'}).addTo(this.map);
-    this.ref=b.ref?L.tileLayer(b.ref,{pane:'labels',maxNativeZoom:b.max,maxZoom:19,keepBuffer:3,updateWhenZooming:false,crossOrigin:'anonymous'}).addTo(this.map):null; },
+    this.base=L.tileLayer(b.base,{maxNativeZoom:b.max,maxZoom:19,keepBuffer:3,updateWhenZooming:false}).addTo(this.map);
+    this.ref=b.ref?L.tileLayer(b.ref,{pane:'labels',maxNativeZoom:b.max,maxZoom:19,keepBuffer:3,updateWhenZooming:false}).addTo(this.map):null; },
   usable(){ const s=state.site; return s&&!(isMrrl(s)&&!mrrlRaw(s)); },
   srcFor(f){ const s=state.site; if(isMrrl(s)) return state.src; return famAvail(f,s,state.src)?state.src:(state.src==='L2'?'L3':'L2'); },
   ui(){
@@ -3120,12 +3140,6 @@ $('#lyAlarm').checked=state.alarm; $('#lyAlarm').onchange=e=>alarm.enable(e.targ
 $('#lySPC').checked=state.spc; $('#lySPC').onchange=e=>spc.set(e.target.checked); if(state.spc) spc.load(true);
 setInterval(()=>{ if(state.spc&&!document.hidden) spc.load(false); },5*60e3);
 const HASH0=readHash();
-$('#lySat').checked=sat.on; $('#satCh').value=sat.ch;
-$('#lySat').onchange=e=>{ sat.on=e.target.checked; store.set('sat',sat.on); satSet(); };
-$('#satCh').onchange=e=>{ sat.ch=e.target.value; store.set('satCh',sat.ch); if(sat.on) satSet(); };
-$('#lyOpera').checked=opera.on; $('#lyOpera').onchange=e=>operaSet(e.target.checked);
-$('#lyMosaic').checked=mosaic.on; $('#lyMosaic').onchange=e=>{ mosaic.on=e.target.checked; store.set('mosaic',mosaic.on); mosaicSet(); };
-document.getElementById('playBtn').addEventListener('click',()=>setTimeout(mosaicOnFrame,0));
 
 /* ================= vertical cross section (Level II volume) ================= */
 const xs={vol:null,volKey:'',a:null,b:null,group:null,busy:false};
@@ -3213,7 +3227,7 @@ function satSet(){
   if(sat.layer){ map.removeLayer(sat.layer); sat.layer=null; } if(!sat.on) return;
   if(!map.getPane('sat')){ const p=map.createPane('sat'); p.style.zIndex=250; p.style.pointerEvents='none'; }
   const west=state.site&&state.site.lon<-105, url=`https://mesonet.agron.iastate.edu/cgi-bin/wms/${west?'goes_west':'goes_east'}.cgi`;
-  sat.layer=L.tileLayer.wms(url,{layers:`conus_${sat.ch}`,format:'image/png',transparent:true,version:'1.1.1',tileSize:512,pane:'sat',opacity:sat.ch==='ch02'?.75:.65,crossOrigin:'anonymous',attribution:'GOES via IEM',_t:Math.floor(Date.now()/300e3)}).addTo(map);
+  sat.layer=L.tileLayer.wms(url,{layers:`conus_${sat.ch}`,format:'image/png',transparent:true,version:'1.1.1',tileSize:512,pane:'sat',opacity:sat.ch==='ch02'?.75:.65,attribution:'GOES via IEM',_t:Math.floor(Date.now()/300e3)}).addTo(map);
   sat.at=Date.now();
 }
 function mosaicTime(){ const f=curFrame(), t=f?+f.t:Date.now(); return new Date(Math.floor(t/300e3)*300e3).toISOString().slice(0,16)+'Z'; }
@@ -3221,7 +3235,7 @@ function mosaicSet(){
   if(mosaic.layer){ map.removeLayer(mosaic.layer); mosaic.layer=null; } if(!mosaic.on) return;
   if(!map.getPane('mosaic')){ const p=map.createPane('mosaic'); p.style.zIndex=340; p.style.pointerEvents='none'; }
   mosaic.time=mosaicTime();
-  mosaic.layer=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q-t.cgi',{layers:'nexrad-n0q-wmst',format:'image/png',transparent:true,version:'1.1.1',tileSize:512,pane:'mosaic',opacity:.5,time:mosaic.time,crossOrigin:'anonymous',attribution:'NEXRAD mosaic via IEM'}).addTo(map);
+  mosaic.layer=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q-t.cgi',{layers:'nexrad-n0q-wmst',format:'image/png',transparent:true,version:'1.1.1',tileSize:512,pane:'mosaic',opacity:.5,time:mosaic.time,attribution:'NEXRAD mosaic via IEM'}).addTo(map);
 }
 function mosaicOnFrame(){ if(!mosaic.on||!mosaic.layer||state.playing) return; const t=mosaicTime(); if(t!==mosaic.time){ mosaic.time=t; mosaic.layer.setParams({time:t}); } }
 setInterval(()=>{ if(sat.on&&!document.hidden&&Date.now()-sat.at>5*60e3){ sat.at=Date.now(); sat.layer&&sat.layer.setParams({_t:Math.floor(Date.now()/300e3)}); } },60e3);
@@ -3258,6 +3272,14 @@ async function operaShow(force){
 }
 function operaSet(on){ opera.on=on; store.set('opera',on); if(on) operaShow(true); else { if(opera.layer){ map.removeLayer(opera.layer); opera.layer=null; } opera.cur=null; $('#operaSrc').textContent='EUMETNET'; } }
 setInterval(()=>{ if(opera.on&&!document.hidden) operaShow(false); },3*60e3);
+
+/* ---- underlay controls (wired after sat / mosaic / opera exist) ---- */
+$('#lySat').checked=sat.on; $('#satCh').value=sat.ch;
+$('#lySat').onchange=e=>{ sat.on=e.target.checked; store.set('sat',sat.on); satSet(); };
+$('#satCh').onchange=e=>{ sat.ch=e.target.value; store.set('satCh',sat.ch); if(sat.on) satSet(); };
+$('#lyOpera').checked=opera.on; $('#lyOpera').onchange=e=>operaSet(e.target.checked);
+$('#lyMosaic').checked=mosaic.on; $('#lyMosaic').onchange=e=>{ mosaic.on=e.target.checked; store.set('mosaic',mosaic.on); mosaicSet(); };
+document.getElementById('playBtn').addEventListener('click',()=>setTimeout(mosaicOnFrame,0));
 
 /* ================= boot ================= */
 setBasemap(store.get('bm','dark'));
